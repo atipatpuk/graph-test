@@ -30,6 +30,7 @@ header{background:var(--ink);border-bottom:4px solid #000;flex:0 0 auto}
   border:3px solid var(--ink);box-shadow:3px 3px 0 #000;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;
   justify-content:center;gap:6px;border-radius:0;text-decoration:none;flex:0 0 auto}
 .btn:active{transform:translate(3px,3px);box-shadow:none}
+.btn:disabled{opacity:.55;cursor:not-allowed}
 .btn.on{background:var(--yellow)}
 .btn.primary{background:var(--green)}
 .btn.danger{background:var(--orange)}
@@ -124,6 +125,7 @@ ol.steps li{margin-bottom:6px}
       <span class="sep"></span>
       <button type="button" class="btn tbtn" id="aDir"><span class="ic" id="dirIc">—</span><span id="dirTxt">ไม่มีทิศ</span></button>
       <button type="button" class="btn tbtn" id="aUndo"><span class="ic">↶</span>Undo</button>
+      <button type="button" class="btn tbtn" id="aRedo" disabled><span class="ic">↷</span>Redo</button>
       <button type="button" class="btn tbtn" id="aStraight"><span class="ic">📏</span>เส้นตรงหมด</button>
       <button type="button" class="btn tbtn" id="aPreset"><span class="ic">📂</span>ตัวอย่าง</button>
       <button type="button" class="btn tbtn" id="aPNG"><span class="ic">🖼️</span>PNG</button>
@@ -202,7 +204,7 @@ const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform 
 
 function emptyGraph(){ return {nodes:[], edges:[], directed:false, nextId:1, nextEid:1, source:null, sink:null, colorNames:[]}; }
 let G = emptyGraph(), view = {x:0, y:0, s:1}, W = 300, H = 300, DPR = 1;
-let tool = 'move', selNode = null, undoStack = [], algo = 'dijkstra';
+let tool = 'move', selNode = null, undoStack = [], redoStack = [], algo = 'dijkstra';
 let run = null, stepIdx = 0, playing = false, timer = null, speed = 1;
 const pointers = new Map(); let drag = null, pinch = null, lastTap = {t:0, key:''};
 
@@ -244,14 +246,32 @@ function load(){
   try{ const d = JSON.parse(localStorage.getItem(LS_KEY)); if(d && d.G){ G = sanitize(d.G); if(d.view && isFinite(d.view.s)) view = d.view; return d.tab || 'dijkstra'; } }catch(_){}
   return null;
 }
-function pushUndo(){ undoStack.push(JSON.stringify(G)); if(undoStack.length > UNDO_MAX) undoStack.shift(); }
+function updateHistoryButtons(){
+  $('#aUndo').disabled = !undoStack.length;
+  $('#aRedo').disabled = !redoStack.length;
+}
+function pushUndo(){
+  undoStack.push(JSON.stringify(G));
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack = [];
+  updateHistoryButtons();
+}
 function undo(){
   if(!undoStack.length) return toast('ไม่มีขั้นให้ย้อนแล้ว');
+  redoStack.push(JSON.stringify(G));
+  if(redoStack.length > UNDO_MAX) redoStack.shift();
   G = sanitize(JSON.parse(undoStack.pop())); selNode = null; clearRun(); afterChange();
-  toast(`↶ ย้อนแล้ว (ย้อนได้อีก ${undoStack.length} ขั้น)`);
+  toast(`↶ ย้อนแล้ว (ไปข้างหน้าได้อีก ${redoStack.length} ขั้น)`);
+}
+function redo(){
+  if(!redoStack.length) return toast('ไม่มีขั้นให้ไปข้างหน้าแล้ว');
+  undoStack.push(JSON.stringify(G));
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  G = sanitize(JSON.parse(redoStack.pop())); selNode = null; clearRun(); afterChange();
+  toast(`↷ ไปข้างหน้าแล้ว (ไปข้างหน้าได้อีก ${redoStack.length} ขั้น)`);
 }
 function commit(fn, invalidate = true){ pushUndo(); fn(); if(invalidate) clearRun(); afterChange(); }
-function afterChange(){ save(); refreshSelects(); updateBadge(); updateHint(); draw(); }
+function afterChange(){ save(); refreshSelects(); updateBadge(); updateHint(); updateHistoryButtons(); draw(); }
 
 /* ---------- geometry ---------- */
 function toWorld(sx, sy){ return {x:(sx-view.x)/view.s, y:(sy-view.y)/view.s}; }
@@ -347,8 +367,9 @@ function drawNode(c, n, st){
   c.lineWidth = 3; c.strokeStyle = INK; c.strokeRect(n.x-r, n.y-r, 2*r, 2*r);
   c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(n.x-r+4, n.y-r+4, 6, 6);
   const short = n.label.length <= 4;
-  c.fillStyle = textOn(fill); c.font = `bold ${short?14:12}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText(short ? n.label : 'v'+n.id, n.x, n.y+1);
+  const label = short ? n.label : 'v'+n.id, numericLabel = /^\d+$/.test(label);
+  c.fillStyle = textOn(fill); c.font = `bold ${numericLabel?16:(short?14:12)}px ${numericLabel?"Arial,Tahoma,sans-serif":FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(label, n.x, n.y+1);
   if(!short) pill(c, n.x, n.y+r+17, n.label, '#fffbe6', INK, INK);
   const T = TABS[algo];
   if(T && T.s && G.source === n.id) tag(c, n.x-r, n.y+r, 'S', '#38b764');
@@ -578,211 +599,45 @@ function analysisHTML(){
 }
 function showAnalysis(){ openModal('🔍 ผลวิเคราะห์กราฟ', analysisHTML()); }
 
-/* ---------- Dijkstra ---------- */
-function runDijkstra(){
+/* ---------- Python algorithm API ---------- */
+async function runPythonAlgorithm(algorithm){
   if(!G.nodes.length) return toast('ยังไม่มีจุดยอด');
-  const s = G.source, t = G.sink;
-  if(s == null || !nodeById(s)) return alertBox('กรุณาเลือก "ต้นทาง" ก่อนรัน Dijkstra');
-  const neg = G.edges.filter(e => e.w < 0);
-  if(neg.length) return openModal('⚠ พบน้ำหนักติดลบ', `<div class="hero bad">Dijkstra ใช้ไม่ได้กับน้ำหนักติดลบ<br>เส้นที่ติดลบ: ${neg.map(e => esc(edgeName(e))).join(', ')}</div>`);
-  const adj = outAdj(), dist = {}, prev = {}, prevE = {}, done = new Set(), steps = []; let relax = 0;
-  G.nodes.forEach(n => { dist[n.id] = Infinity; prev[n.id] = null; }); dist[s] = 0;
-  const base = () => { const ntext={}, node={}, edge={}; G.nodes.forEach(n => ntext[n.id] = fmt(dist[n.id])); done.forEach(id => node[id] = 'visited'); for(const k in prevE) edge[prevE[k]] = 'soft'; return {ntext, node, edge}; };
-  const snap = (m, ex) => steps.push(mkStep(m, base(), ex));
-  snap(`เริ่มต้น: d(${nm(s)}) = 0 และจุดอื่นทั้งหมด = ∞`, {node:{[s]:'current'}});
-  for(;;){
-    let u = null, best = Infinity;
-    for(const n of G.nodes) if(!done.has(n.id) && dist[n.id] < best){ best = dist[n.id]; u = n.id; }
-    if(u === null){ const rest = G.nodes.filter(n => !done.has(n.id)); if(rest.length) snap(`จุดที่เหลือ (${rest.map(n => n.label).join(', ')}) เข้าไม่ถึงจากต้นทาง → ระยะ = ∞`); break; }
-    done.add(u);
-    snap(`เลือก ${nm(u)} ซึ่งมีระยะน้อยที่สุด (${fmt(best)}) ในจุดที่ยังไม่ปิด → ปิดจุดนี้ (ระยะนี้คือคำตอบสุดท้ายแล้ว)`, {node:{[u]:'current'}});
-    for(const {to, w, e} of adj.get(u)){
-      if(done.has(to)) continue;
-      relax++;
-      const nd = dist[u]+w, old = dist[to];
-      if(nd < old){
-        dist[to] = nd; prev[to] = u; prevE[to] = e.id;
-        snap(`Relax ${nm(u)} → ${nm(to)}: ${fmt(dist[u])} + ${fmt(w)} = ${fmt(nd)} < ${fmt(old)} ✔ อัปเดต d(${nm(to)}) = ${fmt(nd)}`, {node:{[u]:'current', [to]:'consider'}, edge:{[e.id]:'consider'}});
-      } else {
-        snap(`Relax ${nm(u)} → ${nm(to)}: ${fmt(dist[u])} + ${fmt(w)} = ${fmt(nd)} ≥ ${fmt(old)} ✘ ไม่เปลี่ยน`, {node:{[u]:'current', [to]:'consider'}, edge:{[e.id]:'reject'}});
-      }
-    }
-  }
-  const pathTo = v => { if(dist[v] === Infinity) return null; const p = []; let x = v; while(x != null){ p.push(x); x = prev[x]; } return p.reverse(); };
-  const pathEdges = v => { const r = []; let x = v; while(prev[x] != null){ r.push(prevE[x]); x = prev[x]; } return r; };
-  const hasT = t != null && nodeById(t);
-  if(hasT){
-    const p = pathTo(t);
-    if(p) snap(`✔ เสร็จสิ้น! เส้นทางสั้นที่สุด: ${p.map(nm).join(' → ')} | ระยะรวม = ${fmt(dist[t])}`,
-      {node:Object.fromEntries(p.map(id => [id,'path'])), edge:Object.fromEntries(pathEdges(t).map(id => [id,'path']))});
-    else snap(`✘ เสร็จสิ้น: ไม่มีเส้นทางจาก ${nm(s)} ไป ${nm(t)} (ระยะ = ∞)`);
-  } else snap('✔ เสร็จสิ้น! ตัวเลขเหนือจุด = ระยะทางสั้นที่สุดจากต้นทาง (เลือก "ปลายทาง" เพื่อดูเส้นทาง)');
-  setRun({key:'dijkstra', title:'📊 สรุปผล Dijkstra — เส้นทางสั้นที่สุด', steps, summary:() => {
-    let h = '';
-    if(hasT){
-      const p = pathTo(t);
-      h += p ? `<div class="hero">🚚 ระยะทางสั้นที่สุดจาก <b>${esc(nm(s))}</b> ไป <b>${esc(nm(t))}</b> = <span class="bignum">${fmt(dist[t])}</span><div class="route">${p.map(id => `<span class="chip">${esc(nm(id))}</span>`).join(' → ')}</div></div>`
-             : `<div class="hero bad">✘ ไปไม่ถึง ${esc(nm(t))} จาก ${esc(nm(s))} (ระยะ = ∞)</div>`;
-    }
-    const reach = G.nodes.filter(n => dist[n.id] < Infinity).length;
-    h += `<div class="cards">${card('ต้นทาง', esc(nm(s)))}${card('ไปถึงได้', `${reach} / ${G.nodes.length} จุด`)}${card('จำนวนครั้ง Relax', relax)}${card('จำนวนขั้นตอน', steps.length)}</div>`;
-    h += '<h3>ระยะทางจากต้นทางไปทุกจุด</h3><div class="tw"><table class="tbl"><tr><th>จุดยอด</th><th>ระยะ</th><th>เส้นทาง</th></tr>';
-    [...G.nodes].sort((a,b) => cmpNum(dist[a.id], dist[b.id])).forEach(n => {
-      const p = pathTo(n.id);
-      h += `<tr><td class="l">${esc(n.label)}</td><td><b>${fmt(dist[n.id])}</b></td><td class="l">${p ? p.map(x => esc(nm(x))).join(' → ') : 'เข้าไม่ถึง'}</td></tr>`;
+  try{
+    const response = await fetch('/api/run', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        algorithm,
+        nodes:G.nodes.map(({id,label}) => ({id,label})),
+        edges:G.edges.map(({id,u,v,w}) => ({id,u,v,w})),
+        directed:G.directed,
+        source:G.source,
+        sink:G.sink,
+        colorNames:G.colorNames
+      })
     });
-    h += '</table></div>';
-    return h + appNote('ใช้หาเส้นทางขนส่งที่สั้นที่สุดหรือถูกที่สุดจากคลังสินค้าไปยังร้านค้า/ลูกค้า ถ้าน้ำหนักคือ "ค่าขนส่ง" ผลลัพธ์จะเป็นเส้นทางที่ประหยัดที่สุด');
-  }});
-}
-
-/* ---------- Prim ---------- */
-function runPrim(){
-  if(!G.nodes.length) return toast('ยังไม่มีจุดยอด');
-  const start = (G.source != null && nodeById(G.source)) ? G.source : G.nodes[0].id;
-  const inT = new Set(), tree = [], steps = [], roots = []; let total = 0, trees = 0;
-  const base = () => { const node={}, edge={}; inT.forEach(id => node[id] = 'visited'); tree.forEach(x => edge[x.e.id] = 'tree'); return {node, edge}; };
-  const snap = (m, ex) => steps.push(mkStep(m, base(), ex));
-  if(G.directed) snap('ℹ Prim ใช้กับกราฟไม่มีทิศทาง → ระบบจะมองทุกเส้นเป็นแบบไม่มีทิศ');
-  const order = [start, ...G.nodes.map(n => n.id).filter(id => id !== start)];
-  for(const root of order){
-    if(inT.has(root)) continue;
-    trees++; roots.push(root); inT.add(root);
-    snap(trees === 1 ? `เริ่มต้นที่ ${nm(root)} — ต้นไม้มี 1 จุด น้ำหนักรวม = 0`
-                     : `ไม่มีเส้นไปยังจุดที่เหลือแล้ว (กราฟไม่ Connected) → เริ่มต้นไม้ต้นที่ ${trees} ที่ ${nm(root)}`, {node:{[root]:'current'}});
-    for(;;){
-      const cand = G.edges.filter(e => e.u !== e.v && inT.has(e.u) !== inT.has(e.v));
-      if(!cand.length) break;
-      let best = cand[0]; for(const e of cand) if(e.w < best.w) best = e;
-      const ed = {}; cand.forEach(e => ed[e.id] = 'consider');
-      const list = [...cand].sort((a,b) => a.w-b.w).slice(0,6).map(e => `${nm(e.u)}–${nm(e.v)} (${fmt(e.w)})`).join(', ') + (cand.length > 6 ? ', ...' : '');
-      snap(`ตัวเลือก ${cand.length} เส้นที่เชื่อมต้นไม้กับจุดใหม่: ${list}`, {edge:ed});
-      const nv = inT.has(best.u) ? best.v : best.u;
-      inT.add(nv); total += best.w; tree.push({e:best, tree:trees, total});
-      snap(`✔ เลือกเส้นต้นทุนต่ำสุด ${nm(best.u)}–${nm(best.v)} = ${fmt(best.w)} → เพิ่ม ${nm(nv)} | น้ำหนักรวม = ${fmt(total)}`, {node:{[nv]:'current'}, edge:{[best.id]:'path'}});
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if(result.key === 'color'){
+      pushUndo();
+      G.nodes.forEach(n => { n.color = result.colors[n.id] ?? null; });
+      save();
     }
-  }
-  snap(trees === 1 ? `✔ เสร็จสิ้น! Minimum Spanning Tree มี ${tree.length} เส้น น้ำหนักรวม = ${fmt(total)}`
-                   : `✔ เสร็จสิ้น! ได้ Spanning Forest ${trees} ต้น (${tree.length} เส้น) น้ำหนักรวม = ${fmt(total)}`);
-  setRun({key:'prim', title:'📊 สรุปผล Prim — Minimum Spanning Tree', steps, summary:() => {
-    let h = `<div class="hero ${trees>1?'warn':''}">🌳 ${trees===1?'Minimum Spanning Tree':'Spanning Forest ('+trees+' ต้น)'} น้ำหนักรวมต่ำสุด = <span class="bignum">${fmt(total)}</span></div>`;
-    h += `<div class="cards">${card('จุดเริ่ม', esc(nm(start)))}${card('จำนวนเส้นที่ใช้', `${tree.length} (= |V| − ${trees})`)}${card('จำนวนต้นไม้', trees)}${card('เส้นที่ไม่ใช้', G.edges.length-tree.length)}</div>`;
-    if(trees > 1) h += `<p>⚠ กราฟไม่ Connected จึงได้ป่า (Forest) — เริ่มแต่ละต้นที่: ${roots.map(r => `<span class="chip">${esc(nm(r))}</span>`).join('')}</p>`;
-    h += '<h3>ลำดับเส้นที่เลือก</h3><div class="tw"><table class="tbl"><tr><th>#</th><th>ต้นที่</th><th>เส้น</th><th>น้ำหนัก</th><th>รวมสะสม</th></tr>';
-    tree.forEach((x,i) => { h += `<tr><td>${i+1}</td><td>${x.tree}</td><td class="l">${esc(nm(x.e.u))} – ${esc(nm(x.e.v))}</td><td>${fmt(x.e.w)}</td><td><b>${fmt(x.total)}</b></td></tr>`; });
-    h += '</table></div>';
-    return h + appNote('วางโครงข่ายถนน ท่อประปา หรือสายไฟให้ทุกจุดเชื่อมถึงกัน โดยใช้งบประมาณรวมน้อยที่สุด');
-  }});
-}
-
-/* ---------- Coloring ---------- */
-function exactChromatic(ids, nb){
-  const n = ids.length; if(!n) return {k:0, col:new Map()};
-  const order = [...ids].sort((a,b) => nb.get(b).size-nb.get(a).size), col = new Map();
-  const ok = (v,c) => { for(const u of nb.get(v)) if(col.get(u) === c) return false; return true; };
-  const bt = (i,k,used) => {
-    if(i === n) return true;
-    const v = order[i];
-    for(let c=0; c<Math.min(k, used+1); c++){ if(ok(v,c)){ col.set(v,c); if(bt(i+1, k, Math.max(used, c+1))) return true; col.delete(v); } }
-    return false;
-  };
-  for(let k=1; k<=n; k++){ col.clear(); if(bt(0,k,0)) return {k, col:new Map(col)}; }
-  return {k:n, col};
-}
-function runColoring(){
-  if(!G.nodes.length) return toast('ยังไม่มีจุดยอด');
-  const nb = nbrSets(), deg = id => nb.get(id).size;
-  const order = [...G.nodes].sort((a,b) => deg(b.id)-deg(a.id) || a.id-b.id).map(n => n.id);
-  const col = {}, steps = []; let c = 0, cnt = 0;
-  const base = () => ({fill:{...col}});
-  const snap = (m, ex) => steps.push(mkStep(m, base(), ex));
-  snap(`Welsh–Powell: เรียงจุดตาม Degree มาก→น้อย: ${order.map(id => `${nm(id)}(${deg(id)})`).join(', ')}`);
-  while(cnt < order.length){
-    snap(`🎨 เริ่มใช้สีที่ ${c+1} "${cName(c)}" — ไล่ตามลำดับ ใส่สีให้จุดที่ไม่ติดกับจุดสีนี้`);
-    for(const id of order){
-      if(col[id] !== undefined) continue;
-      let conflict = null; for(const x of nb.get(id)) if(col[x] === c){ conflict = x; break; }
-      if(conflict === null){ col[id] = c; cnt++; snap(`${nm(id)} ไม่ติดกับจุดที่ใช้ "${cName(c)}" → ระบายสีนี้`, {node:{[id]:'current'}}); }
-      else {
-        const e = G.edges.find(x => (x.u === id && x.v === conflict) || (x.v === id && x.u === conflict));
-        snap(`${nm(id)} ติดกับ ${nm(conflict)} ที่ใช้ "${cName(c)}" แล้ว → ข้ามไปก่อน`, {node:{[id]:'current'}, edge:e ? {[e.id]:'consider'} : {}});
-      }
-    }
-    c++;
-  }
-  const k = c, Delta = Math.max(0, ...G.nodes.map(n => deg(n.id)));
-  const exact = G.nodes.length <= 15 ? exactChromatic(order, nb) : null;
-  snap(`✔ เสร็จสิ้น! Greedy ใช้ ${k} สี (ขอบเขตบน Δ+1 = ${Delta+1})` + (exact ? ` | Chromatic Number χ(G) = ${exact.k}` : ''));
-  pushUndo(); G.nodes.forEach(n => n.color = col[n.id]); save();
-  setRun({key:'color', title:'📊 สรุปผล Graph Coloring', steps, summary:() => {
-    let h = `<div class="hero">🎨 Welsh–Powell ใช้ <span class="bignum">${k}</span> สี${exact ? ` • ค่าที่ดีที่สุดจริง χ(G) = <b>${exact.k}</b>` : ''}</div>`;
-    h += `<div class="cards">${card('Greedy (Welsh–Powell)', k+' สี')}${card('Δ (Degree สูงสุด)', Delta)}${card('ขอบเขตบน Δ+1', Delta+1)}${card('χ(G) แบบ Exact', exact ? exact.k : 'คำนวณเมื่อ |V| ≤ 15')}</div>`;
-    if(exact) h += exact.k < k ? `<p>⚠ Greedy ใช้สีมากกว่าค่าที่ดีที่สุด ${k-exact.k} สี (Greedy ไม่รับประกันว่าน้อยที่สุดเสมอ)</p>` : '<p>✔ Greedy ได้จำนวนสีเท่ากับค่าที่ดีที่สุด</p>';
-    h += '<h3>กลุ่มของแต่ละสี (กดตั้งชื่อความหมายได้)</h3>';
-    for(let i=0; i<k; i++){
-      const mem = G.nodes.filter(n => col[n.id] === i);
-      h += `<div class="grp"><div class="gh"><span><span class="sw" style="background:${PALETTE[i%PALETTE.length]}"></span>${esc(cName(i))} <small>(${mem.length} จุด)</small></span><button type="button" class="btn mini" data-cname="${i}">✏️ ตั้งชื่อ</button></div>${mem.map(n => `<span class="chip">${esc(n.label)}</span>`).join('')}</div>`;
-    }
-    h += '<h3>ลำดับ Welsh–Powell</h3><div class="tw"><table class="tbl"><tr><th>#</th><th>จุด</th><th>deg</th><th>สี</th></tr>';
-    order.forEach((id,i) => { h += `<tr><td>${i+1}</td><td class="l">${esc(nm(id))}</td><td>${deg(id)}</td><td class="l"><span class="sw" style="background:${PALETTE[col[id]%PALETTE.length]}"></span>${esc(cName(col[id]))}</td></tr>`; });
-    h += '</table></div>';
-    return h + appNote('จุดที่เชื่อมกัน = ขัดแย้งกัน (เช่น วิชาที่มีนักเรียนสอบซ้อน หรือสินค้าที่ห้ามเก็บรวมกัน) จึงต้องได้สีต่างกัน แต่ละสีจึงหมายถึงช่วงเวลาสอบหรือช่องจัดเก็บ 1 ช่อง จำนวนสีจึงเท่ากับจำนวนช่วงเวลาหรือช่องที่ต้องใช้');
-  }});
-}
-
-/* ---------- Network Flow (Edmonds–Karp) ---------- */
-function runFlow(){
-  const s = G.source, t = G.sink;
-  if(s == null || t == null || !nodeById(s) || !nodeById(t)) return alertBox('กรุณาเลือก Source และ Sink ก่อนรัน Max Flow');
-  if(s === t) return alertBox('Source และ Sink ต้องเป็นคนละจุด');
-  const g = new Map(G.nodes.map(n => [n.id, []])), arcs = [];
-  const addArc = (u,v,cap,eid,sign) => { const a = {to:v, cap, flow:0, eid, sign}, b = {to:u, cap:0, flow:0, eid:null, sign:0}; a.rev = b; b.rev = a; g.get(u).push(a); g.get(v).push(b); arcs.push(a); };
-  G.edges.forEach(e => { if(e.u === e.v) return; addArc(e.u, e.v, e.w, e.id, 1); if(!G.directed) addArc(e.v, e.u, e.w, e.id, -1); });
-  const flowOf = () => { const f = {}; G.edges.forEach(e => f[e.id] = 0); arcs.forEach(a => f[a.eid] += a.sign*a.flow); return f; };
-  const steps = [], aug = []; let total = 0;
-  const base = () => { const f = flowOf(), etext = {}, edge = {}; G.edges.forEach(e => { const v = Math.abs(f[e.id]); etext[e.id] = `${fmt(v)}/${fmt(e.w)}`; if(v > EPS) edge[e.id] = v >= e.w-EPS ? 'sat' : 'flow'; }); return {etext, edge}; };
-  const snap = (m, ex) => steps.push(mkStep(m, base(), ex));
-  snap(`เริ่มต้น: Flow ทุกเส้น = 0 (แสดงเป็น flow/capacity) | Source = ${nm(s)}, Sink = ${nm(t)}` + (G.directed ? '' : ' | ⚠ กราฟไม่มีทิศ: แต่ละเส้นไหลได้ 2 ทาง'), {node:{[s]:'current', [t]:'current'}});
-  for(let it=1; it<=10000; it++){
-    const par = new Map([[s, null]]), q = [s];
-    while(q.length && !par.has(t)){ const u = q.shift(); for(const a of g.get(u)) if(a.cap-a.flow > EPS && !par.has(a.to)){ par.set(a.to, {u, a}); q.push(a.to); } }
-    if(!par.has(t)) break;
-    const pa = [], pn = [t]; let v = t, b = Infinity;
-    while(v !== s){ const {u, a} = par.get(v); pa.push(a); b = Math.min(b, a.cap-a.flow); v = u; pn.push(u); }
-    pa.reverse(); pn.reverse();
-    const ed = {}, nd = {}; pa.forEach(a => ed[a.eid != null ? a.eid : a.rev.eid] = 'consider'); pn.forEach(id => nd[id] = 'consider');
-    const back = pa.some(a => a.eid == null);
-    snap(`รอบ ${it}: BFS พบ Augmenting Path ${pn.map(nm).join(' → ')} | คอขวดของเส้นทาง = ${fmt(b)}` + (back ? ' (มีการดันกระแสย้อนกลับผ่าน residual edge)' : ''), {edge:ed, node:nd});
-    pa.forEach(a => { a.flow += b; a.rev.flow -= b; });
-    total += b; aug.push({nodes:pn, b, back});
-    snap(`เพิ่ม Flow +${fmt(b)} ตามเส้นทางนี้ → Flow รวม = ${fmt(total)}`, {edge:Object.fromEntries(Object.keys(ed).map(k => [k, 'path'])), node:nd});
-  }
-  const S = new Set([s]), q2 = [s];
-  while(q2.length){ const u = q2.shift(); for(const a of g.get(u)) if(a.cap-a.flow > EPS && !S.has(a.to)){ S.add(a.to); q2.push(a.to); } }
-  const cut = G.edges.filter(e => (S.has(e.u) && !S.has(e.v)) || (!G.directed && S.has(e.v) && !S.has(e.u)));
-  const cutCap = cut.reduce((x,e) => x+e.w, 0);
-  snap(`ไม่พบ Augmenting Path อีกแล้ว → Max Flow = ${fmt(total)}`);
-  const ns = {}; S.forEach(id => ns[id] = 'inS'); const ce = {}; cut.forEach(e => ce[e.id] = 'cut');
-  snap(`✔ Min Cut: ฝั่ง S = {${[...S].map(nm).join(', ')}} | เส้นคอขวด: ${cut.map(edgeName).join(', ') || '-'} | ความจุรวม = ${fmt(cutCap)} = Max Flow`, {node:ns, edge:ce});
-  const finalF = flowOf(), cutIds = new Set(cut.map(e => e.id));
-  setRun({key:'flow', title:'📊 สรุปผล Max Flow (Edmonds–Karp)', steps, summary:() => {
-    let h = `<div class="hero">🚰 ปริมาณไหลสูงสุดจาก <b>${esc(nm(s))}</b> ไป <b>${esc(nm(t))}</b> = <span class="bignum">${fmt(total)}</span></div>`;
-    h += `<div class="cards">${card('จำนวนรอบ Augment', aug.length)}${card('ความจุ Min Cut', fmt(cutCap))}${card('เส้นคอขวด', cut.length+' เส้น')}${card('Max Flow = Min Cut', fmt(total)===fmt(cutCap)?'✔ จริง':'✘')}</div>`;
-    h += '<h3>🔴 เส้นคอขวด (Min Cut)</h3>' + (cut.length ? cut.map(e => `<span class="chip" style="background:#ffd6d6">${esc(edgeName(e))} (${fmt(e.w)})</span>`).join('') : '<p>-</p>');
-    h += `<p style="font-size:14px">ฝั่ง S: ${[...S].map(id => `<span class="chip">${esc(nm(id))}</span>`).join('')}<br>ฝั่ง T: ${G.nodes.filter(n => !S.has(n.id)).map(n => `<span class="chip">${esc(n.label)}</span>`).join('')}</p>`;
-    h += '<h3>Augmenting Paths ทีละรอบ</h3><div class="tw"><table class="tbl"><tr><th>รอบ</th><th>เส้นทาง</th><th>เพิ่ม</th></tr>';
-    aug.forEach((a,i) => { h += `<tr><td>${i+1}</td><td class="l">${a.nodes.map(x => esc(nm(x))).join(' → ')}${a.back?' ↺':''}</td><td><b>+${fmt(a.b)}</b></td></tr>`; });
-    h += '</table></div><h3>Flow บนแต่ละเส้น</h3><div class="tw"><table class="tbl"><tr><th>เส้น</th><th>Flow / Capacity</th><th>สถานะ</th></tr>';
-    G.edges.forEach(e => {
-      const f = finalF[e.id], v = Math.abs(f);
-      const dir = !G.directed && v > EPS ? (f > 0 ? ` (${esc(nm(e.u))}→${esc(nm(e.v))})` : ` (${esc(nm(e.v))}→${esc(nm(e.u))})`) : '';
-      const stt = cutIds.has(e.id) ? '🔴 คอขวด (เต็ม)' : (v >= e.w-EPS && e.w > 0 ? '🟣 เต็ม' : `เหลือ ${fmt(e.w-v)}`);
-      h += `<tr><td class="l">${esc(edgeName(e))}${dir}</td><td><b>${fmt(v)}/${fmt(e.w)}</b></td><td class="l">${stt}</td></tr>`;
+    setRun({
+      key:result.key,
+      title:result.title,
+      steps:result.steps,
+      summary:() => result.summary.replace(/\{\{COLOR_NAME_(\d+)\}\}/g, (_, i) => esc(cName(+i)))
     });
-    h += '</table></div>';
-    return h + appNote('ใช้ประเมินปริมาณสินค้าหรือการจราจรสูงสุดที่โครงข่ายรองรับได้ เส้นคอขวด (Min Cut) คือจุดที่ควรขยายก่อน เพราะถ้าเพิ่มความจุเส้นเหล่านี้ Max Flow จึงจะเพิ่มขึ้นได้');
-  }});
+  }catch(error){
+    console.error('Python algorithm request failed:', error);
+    toast(`รันอัลกอริทึมไม่สำเร็จ: ${error.message}`);
+  }
 }
+function runDijkstra(){ return runPythonAlgorithm('dijkstra'); }
+function runPrim(){ return runPythonAlgorithm('prim'); }
+function runColoring(){ return runPythonAlgorithm('color'); }
+function runFlow(){ return runPythonAlgorithm('flow'); }
 
 /* ---------- player ---------- */
 function setRun(r){
@@ -960,7 +815,7 @@ function showHelp(){
     <tr><td>⌖</td><td class="l">จัดกราฟให้อยู่กึ่งกลางจอ</td></tr>
   </table></div>
   <h3>ทางลัด</h3>
-  <p>Ctrl/⌘+Z = Undo (ประมาณ 70 ขั้น) • ← → = ย้อน/ถัดไป • Space = เล่น/หยุด • ล้อเมาส์หรือบีบ 2 นิ้ว = ซูม</p>
+  <p>Ctrl/⌘+Z = Undo • Ctrl/⌘+Y หรือ Ctrl/⌘+Shift+Z = Redo (ประมาณ 70 ขั้น) • ← → = ย้อน/ถัดไป • Space = เล่น/หยุด • ล้อเมาส์หรือบีบ 2 นิ้ว = ซูม</p>
   <div class="note">💾 ระบบบันทึกอัตโนมัติในเบราว์เซอร์ (localStorage): จุด เส้น น้ำหนัก ทิศทาง ชื่อ สี และ Source/Sink</div>
   <p><button type="button" class="btn primary" id="helpPreset">📂 เปิดตัวอย่างสาธิต</button></p>`);
 }
@@ -977,6 +832,7 @@ function init(){
   });
   $('#aDir').onclick = () => { commit(() => { G.directed = !G.directed; }); toast(G.directed ? '→ เปลี่ยนเป็นกราฟมีทิศทาง' : '— เปลี่ยนเป็นกราฟไม่มีทิศทาง'); };
   $('#aUndo').onclick = undo;
+  $('#aRedo').onclick = redo;
   $('#aStraight').onclick = () => { if(!G.edges.some(e => e.curve)) return toast('เส้นตรงอยู่แล้วทั้งหมด'); commit(() => G.edges.forEach(e => e.curve = 0), false); toast('📏 รีเซ็ตเป็นเส้นตรงแล้ว'); };
   $('#aPreset').onclick = showPresets;
   $('#aPNG').onclick = exportPNG;
@@ -1015,7 +871,8 @@ function init(){
   });
   window.addEventListener('keydown', e => {
     const tg = e.target.tagName; if(tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') return;
-    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); undo(); }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); if(e.shiftKey) redo(); else undo(); }
+    else if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y'){ e.preventDefault(); redo(); }
     else if(e.key === 'Escape') closeModal();
     else if(e.key === 'ArrowRight') manual(() => go(stepIdx+1));
     else if(e.key === 'ArrowLeft') manual(() => go(stepIdx-1));
