@@ -12,22 +12,23 @@
 :root{
   --ink:#1a1c2c; --paper:#f4efe1; --navy:#333c57; --yellow:#ffcd75; --green:#a7f070; --dgreen:#38b764;
   --blue:#41a6f6; --dblue:#3b5dc9; --orange:#ef7d57; --red:#b13e53; --purple:#5d275d; --gray:#94b0c2; --cyan:#73eff7;
-  --font:'Pixelify Sans','Mitr','Tahoma',sans-serif;
+  --font:'Mitr','Tahoma',sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;background:var(--navy);font-family:var(--font);color:var(--ink);
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-text-size-adjust:100%}
 #app{display:flex;flex-direction:column;height:100%;height:100dvh;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-header{background:var(--ink);border-bottom:4px solid #000;flex:0 0 auto}
-.titlebar{display:flex;align-items:baseline;gap:10px;padding:8px 12px 0}
-.logo{color:var(--yellow);font-weight:700;font-size:19px;letter-spacing:1px;text-shadow:2px 2px 0 var(--red);white-space:nowrap}
-.sub{color:var(--gray);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.scroll{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:8px 10px 11px}
+header{position:relative;isolation:isolate;padding-top:46px;background:var(--ink);border-bottom:4px solid #000;flex:0 0 auto}
+header::before{content:"";position:absolute;z-index:-1;inset:0;height:46px;background:url('head.png') center center/cover no-repeat;image-rendering:pixelated;pointer-events:none}
+.titlebar{position:absolute;inset:0 0 auto;z-index:1;height:46px;display:flex;align-items:center;gap:10px;padding:4px 12px}
+.logo{color:var(--yellow);background:#684126;border:3px solid #241b20;padding:2px 8px;font-family:'Pixelify Sans','Mitr',sans-serif;font-weight:700;font-size:19px;letter-spacing:1px;text-shadow:2px 2px 0 var(--red);white-space:nowrap;box-shadow:3px 3px 0 #000}
+.sub{color:#fff;font-size:12px;text-shadow:1px 2px #1a1c2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scroll{position:relative;z-index:1;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:8px 10px 11px;background:#604025;border-top:3px solid #b17836}
 .scroll::-webkit-scrollbar{display:none}
 .sep{flex:0 0 3px;background:#566c86;margin:4px 2px}
-.btn{font-family:var(--font);font-size:15px;min-height:44px;min-width:44px;padding:6px 12px;background:#fff;color:var(--ink);
-  border:3px solid var(--ink);box-shadow:3px 3px 0 #000;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;
+.btn{font-family:var(--font);font-size:15px;min-height:44px;min-width:44px;padding:6px 12px;background:#f4dfb5;color:var(--ink);
+  border:3px solid #3e2a20;box-shadow:3px 3px 0 #000;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;
   justify-content:center;gap:6px;border-radius:0;text-decoration:none;flex:0 0 auto}
 .btn:active{transform:translate(3px,3px);box-shadow:none}
 .btn:disabled{opacity:.55;cursor:not-allowed}
@@ -39,15 +40,20 @@ header{background:var(--ink);border-bottom:4px solid #000;flex:0 0 auto}
 .tbtn .ic{font-size:20px;line-height:1.15}
 #hint{background:var(--yellow);border-bottom:3px solid var(--ink);padding:6px 12px;font-size:14px;line-height:1.35;flex:0 0 auto}
 main{flex:1;display:flex;flex-direction:column;min-height:0}
-#stage{flex:1;position:relative;min-height:150px;overflow:hidden;background:var(--paper)}
+#stage{flex:1;position:relative;min-height:150px;overflow:hidden;background:var(--paper);border:5px solid #6b4727;box-shadow:inset 0 0 0 2px #d3a45c}
 #cv{position:absolute;inset:0;touch-action:none;display:block;cursor:crosshair}
 #badge{position:absolute;left:8px;top:8px;background:#fff;border:3px solid var(--ink);box-shadow:3px 3px 0 var(--ink);padding:4px 8px;font-size:13px;pointer-events:none}
 #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:8px}
 #zoom .btn{font-size:20px;padding:0;width:46px}
-#dock{flex:0 0 auto;max-height:48vh;overflow-y:auto;background:#e8e4d8;border-top:4px solid var(--ink);padding:4px 10px 10px;-webkit-overflow-scrolling:touch}
+#dock{flex:0 0 auto;max-height:48vh;overflow-y:auto;background:#e8e4d8;border-top:4px solid #6b4727;padding:4px 10px 10px;-webkit-overflow-scrolling:touch}
 @media (min-width:900px){
   main{flex-direction:row}
-  #dock{width:390px;max-height:none;border-top:none;border-left:4px solid var(--ink)}
+  #dock{width:390px;max-height:none;border-top:none;border-left:4px solid #6b4727}
+  .scroll{padding:4px 10px 6px}
+  .tbtn{min-height:36px;font-size:11px}
+  .tbtn .ic{font-size:16px}
+  .logo{font-size:15px;letter-spacing:.5px;padding:0 5px;border-width:2px;box-shadow:2px 2px 0 #000}
+  .sub{font-size:10px}
 }
 .dockhead{display:flex;align-items:flex-start;gap:6px;padding-top:6px}
 .dockhead #dockToggle{flex:0 0 auto;margin-top:2px}
@@ -55,7 +61,7 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
 .btn.tab{font-size:14px;min-width:0;width:100%;padding:6px 6px;white-space:normal;line-height:1.2;text-align:center}
 
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
-.desc{background:#fff;border:3px solid var(--ink);padding:8px 10px;font-size:14px;line-height:1.5}
+.desc{background:#fff9e8;border:3px solid #6b4727;padding:8px 10px;font-size:14px;line-height:1.5;box-shadow:3px 3px 0 #241b20}
 .desc .app{display:block;margin-top:4px;color:#257179;font-weight:bold}
 label.sel{display:flex;flex-direction:column;font-size:13px;flex:1;min-width:130px;gap:3px}
 select{font-family:var(--font);font-size:15px;min-height:44px;border:3px solid var(--ink);background:#fff;padding:4px;border-radius:0;box-shadow:3px 3px 0 var(--ink);color:var(--ink);width:100%}
@@ -190,7 +196,7 @@ ol.steps li{margin-bottom:6px}
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const cv = $('#cv'), ctx = cv.getContext('2d');
-const FONT = "'Pixelify Sans','Mitr',Tahoma,sans-serif";
+const FONT = "'Mitr',Tahoma,sans-serif";
 const INK = '#1a1c2c', PAPER = '#f4efe1';
 const PALETTE = ['#ef7d57','#41a6f6','#a7f070','#ffcd75','#f4a6d7','#73eff7','#b13e53','#38b764','#c28a4a','#94b0c2','#5d275d','#3b5dc9','#257179','#d4a5ff','#566c86'];
 const NODE_FILL = {current:'#ffcd75', consider:'#ef7d57', visited:'#a7f070', path:'#38b764', inS:'#73eff7'};
