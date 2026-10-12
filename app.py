@@ -29,6 +29,7 @@ HTML = r"""<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a1c2c">
 <title>Graph Theory Lab</title>
+<link rel="icon" type="image/png" href="web.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&family=Mitr:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -1023,13 +1024,14 @@ def lan_ip() -> str:
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith("/favicon"):
+        if self.path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
             return
         assets = {
             "/head.png": ("head.png", "image/png"),
             "/mascot_clean.png": ("mascot_clean.png", "image/png"),
+            "/web.png": ("web.png", "image/png"),
         }
         if self.path in assets:
             filename, content_type = assets[self.path]
