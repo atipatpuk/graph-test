@@ -51,9 +51,12 @@ header::before{content:"";position:absolute;z-index:-1;inset:0;height:46px;backg
 .scroll::-webkit-scrollbar{display:none}
 .sep{flex:0 0 3px;background:#566c86;margin:4px 2px}
 .btn{font-family:var(--font);font-size:15px;min-height:44px;min-width:44px;padding:6px 12px;background:#f4dfb5;color:var(--ink);
-  border:3px solid #3e2a20;box-shadow:3px 3px 0 #000;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;
-  justify-content:center;gap:6px;border-radius:0;text-decoration:none;flex:0 0 auto}
-.btn:active{transform:translate(3px,3px);box-shadow:none}
+  border:3px solid #30201b;box-shadow:inset 2px 2px 0 rgba(255,255,255,.72),inset -2px -2px 0 rgba(111,75,43,.26),4px 4px 0 #000;
+  cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:5px;text-decoration:none;
+  flex:0 0 auto;transition:transform .08s steps(2,end),box-shadow .08s steps(2,end)}
+.btn:hover:not(:disabled){transform:translate(-1px,-1px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.72),inset -2px -2px 0 rgba(111,75,43,.26),5px 5px 0 #000}
+.btn:active:not(:disabled){transform:translate(4px,4px);box-shadow:inset 2px 2px 0 rgba(255,255,255,.72),inset -2px -2px 0 rgba(111,75,43,.26),0 0 0 #000}
+.btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .btn.on{background:var(--yellow)}
 .btn.primary{background:var(--green)}
@@ -239,6 +242,7 @@ let G = emptyGraph(), view = {x:0, y:0, s:1}, W = 300, H = 300, DPR = 1;
 let tool = 'move', selNode = null, undoStack = [], redoStack = [], algo = 'dijkstra';
 let run = null, stepIdx = 0, playing = false, timer = null, speed = 1;
 const pointers = new Map(); let drag = null, pinch = null, lastTap = {t:0, key:''};
+let hoverNode = null, hoverEdge = null, hoverStarted = 0, hoverFrame = 0;
 
 /* ---------- utils ---------- */
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -336,6 +340,18 @@ function resize(){
 }
 function currentStep(){ return run ? run.steps[stepIdx] : null; }
 function draw(){ ctx.setTransform(DPR,0,0,DPR,0,0); renderScene(ctx, W, H, view); }
+function setHover(node, edge){
+  const nodeId = node ? node.id : null, edgeId = edge ? edge.id : null;
+  if(nodeId === hoverNode && edgeId === hoverEdge) return;
+  hoverNode = nodeId; hoverEdge = edgeId; hoverStarted = performance.now();
+  cv.style.cursor = node || edge ? 'pointer' : (tool === 'move' ? 'grab' : 'crosshair');
+  draw();
+  if((node || edge) && !hoverFrame) hoverFrame = requestAnimationFrame(animateHover);
+}
+function animateHover(){
+  if(hoverNode == null && hoverEdge == null){ hoverFrame = 0; return; }
+  draw(); hoverFrame = requestAnimationFrame(animateHover);
+}
 function renderScene(c, w, h, v){
   c.fillStyle = PAPER; c.fillRect(0,0,w,h);
   const gs = 40*v.s;
@@ -363,14 +379,25 @@ function tag(c, x, y, t, bg){
   c.fillStyle = bg; c.fillRect(x-7, y-7, 14, 14);
   c.fillStyle = '#fff'; c.font = `bold 11px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, x, y+1);
 }
+function roundedBox(c, x, y, size, radius=6){
+  const r = Math.min(radius, size/2);
+  c.beginPath(); c.moveTo(x+r,y); c.lineTo(x+size-r,y); c.quadraticCurveTo(x+size,y,x+size,y+r);
+  c.lineTo(x+size,y+size-r); c.quadraticCurveTo(x+size,y+size,x+size-r,y+size);
+  c.lineTo(x+r,y+size); c.quadraticCurveTo(x,y+size,x,y+size-r);
+  c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y); c.closePath();
+}
 function drawEdge(c, e, st, showW){
   const g = edgeGeom(e); if(!g) return;
-  const key = st && st.edge ? st.edge[e.id] : null;
+  const hovered = hoverEdge === e.id, key = st && st.edge ? st.edge[e.id] : null;
   const S = EDGE_STY[key] || EDGE_STY.base;
+  if(hovered){
+    const wobble = Math.sin((performance.now()-hoverStarted)/75)*2.5;
+    g.cx += g.nx*wobble; g.cy += g.ny*wobble; g.px += g.nx*wobble/2; g.py += g.ny*wobble/2;
+  }
   const path = () => { c.beginPath(); c.moveTo(g.a.x,g.a.y); c.quadraticCurveTo(g.cx,g.cy,g.b.x,g.b.y); };
   c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
   if(S.hl){ c.setLineDash([]); c.strokeStyle = INK; c.lineWidth = S.w+4; path(); c.stroke(); }
-  c.setLineDash(S.dash ? [12,8] : []); c.strokeStyle = S.c; c.lineWidth = S.w; path(); c.stroke(); c.setLineDash([]);
+  c.setLineDash(S.dash ? [12,8] : []); c.strokeStyle = hovered ? '#ef7d57' : S.c; c.lineWidth = S.w+(hovered?3:0); path(); c.stroke(); c.setLineDash([]);
   if(G.directed){
     let t1 = 1;
     for(let i=0;i<=60;i++){ const t=1-i/60, p=bez(g,t); if(Math.abs(p.x-g.b.x)>NR+4 || Math.abs(p.y-g.b.y)>NR+4){ t1=t; break; } }
@@ -387,17 +414,23 @@ function drawEdge(c, e, st, showW){
   c.restore();
 }
 function drawNode(c, n, st){
+  const hovered = hoverNode === n.id;
+  if(hovered){
+    const phase = (performance.now()-hoverStarted)/75;
+    c.save(); c.translate(n.x,n.y); c.rotate(Math.sin(phase)*0.035);
+    const scale = 1.04+Math.sin(phase*2)*0.025; c.scale(scale,scale); c.translate(-n.x,-n.y);
+  }
   const sty = st && st.node ? st.node[n.id] : null, r = NR;
-  let fill = '#ffffff';
+  let fill = '#8bea3c';
   if(st && st.fill){ if(st.fill[n.id] != null) fill = PALETTE[st.fill[n.id] % PALETTE.length]; }
   else if(!st && n.color != null) fill = PALETTE[n.color % PALETTE.length];
   if(!(st && st.fill) && sty && NODE_FILL[sty]) fill = NODE_FILL[sty];
   let ring = null; if(sty === 'current') ring = '#b13e53'; if(selNode === n.id) ring = '#41a6f6';
-  if(ring){ c.fillStyle = ring; c.fillRect(n.x-r-8, n.y-r-8, 2*r+16, 2*r+16); c.strokeStyle = INK; c.lineWidth = 2; c.strokeRect(n.x-r-8, n.y-r-8, 2*r+16, 2*r+16); }
-  c.fillStyle = 'rgba(26,28,44,0.9)'; c.fillRect(n.x-r+5, n.y-r+5, 2*r, 2*r);
-  c.fillStyle = fill; c.fillRect(n.x-r, n.y-r, 2*r, 2*r);
-  c.lineWidth = 3; c.strokeStyle = INK; c.strokeRect(n.x-r, n.y-r, 2*r, 2*r);
-  c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(n.x-r+4, n.y-r+4, 6, 6);
+  if(ring){ roundedBox(c, n.x-r-8, n.y-r-8, 2*r+16, 10); c.fillStyle = ring; c.fill(); c.strokeStyle = INK; c.lineWidth = 2; c.stroke(); }
+  roundedBox(c, n.x-r+5, n.y-r+5, 2*r, 9); c.fillStyle = 'rgba(26,28,44,0.9)'; c.fill();
+  roundedBox(c, n.x-r, n.y-r, 2*r, 9); c.fillStyle = fill; c.fill(); c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+  c.fillStyle = 'rgba(255,255,255,0.85)'; c.fillRect(n.x-r+5, n.y-r+5, 7, 4); c.fillRect(n.x-r+5, n.y-r+9, 4, 5);
+  c.fillStyle = 'rgba(26,28,44,0.18)'; c.fillRect(n.x+r-6, n.y-r+8, 3, 2*r-16); c.fillRect(n.x-r+8, n.y+r-6, 2*r-16, 3);
   const short = n.label.length <= 4;
   const label = short ? n.label : 'v'+n.id, numericLabel = /^\d+$/.test(label);
   c.fillStyle = textOn(fill); c.font = `bold ${numericLabel?16:(short?14:12)}px ${numericLabel?"Arial,Tahoma,sans-serif":FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -407,6 +440,7 @@ function drawNode(c, n, st){
   if(T && T.s && G.source === n.id) tag(c, n.x-r, n.y+r, 'S', '#38b764');
   if(T && T.t && G.sink === n.id) tag(c, n.x+r, n.y+r, 'T', '#b13e53');
   if(st && st.ntext && st.ntext[n.id] != null) pill(c, n.x, n.y-r-17, st.ntext[n.id], '#ffcd75', INK, INK);
+  if(hovered) c.restore();
 }
 
 /* ---------- view ---------- */
@@ -428,6 +462,7 @@ function fitView(){
 function ptr(e){ const r = cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
+  setHover(null, null);
   try{ cv.setPointerCapture(e.pointerId); }catch(_){}
   const p = ptr(e); pointers.set(e.pointerId, p);
   if(pointers.size === 2){
@@ -445,7 +480,13 @@ cv.addEventListener('pointerdown', e => {
   drag = {type, n, ed, w, sx:p.x, sy:p.y, lx:p.x, ly:p.y, moved:false, undo:false, offX:n?n.x-w.x:0, offY:n?n.y-w.y:0};
 });
 cv.addEventListener('pointermove', e => {
-  if(!pointers.has(e.pointerId)) return;
+  if(!pointers.has(e.pointerId)){
+    if(e.pointerType !== 'touch'){
+      const p = ptr(e), w = toWorld(p.x, p.y), n = hitNode(w), ed = n ? null : hitEdge(w);
+      setHover(n, ed);
+    }
+    return;
+  }
   const p = ptr(e); pointers.set(e.pointerId, p);
   if(pinch && pointers.size >= 2){
     const [a,b] = [...pointers.values()];
@@ -478,6 +519,7 @@ function endPtr(e){
 }
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('pointerleave', () => { if(!pointers.size) setHover(null, null); });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('wheel', e => { e.preventDefault(); const p = ptr(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY*0.0015)); }, {passive:false});
 document.addEventListener('gesturestart', e => e.preventDefault());
