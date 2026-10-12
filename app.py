@@ -243,6 +243,7 @@ let tool = 'move', selNode = null, undoStack = [], redoStack = [], algo = 'dijks
 let run = null, stepIdx = 0, playing = false, timer = null, speed = 1;
 const pointers = new Map(); let drag = null, pinch = null, lastTap = {t:0, key:''};
 let hoverNode = null, hoverEdge = null, hoverStarted = 0, hoverFrame = 0;
+let edgePreview = null;
 
 /* ---------- utils ---------- */
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -340,11 +341,23 @@ function resize(){
 }
 function currentStep(){ return run ? run.steps[stepIdx] : null; }
 function draw(){ ctx.setTransform(DPR,0,0,DPR,0,0); renderScene(ctx, W, H, view); }
+const CURSOR_STYLES = {
+  move: 'grab',
+  node: 'crosshair',
+  edge: 'crosshair',
+  edit: 'text',
+  bend: 'move',
+  del: 'not-allowed'
+};
+function updateCanvasCursor(){
+  cv.style.cursor = CURSOR_STYLES[tool] || 'default';
+}
 function setHover(node, edge){
   const nodeId = node ? node.id : null, edgeId = edge ? edge.id : null;
+  updateCanvasCursor();
   if(nodeId === hoverNode && edgeId === hoverEdge) return;
   hoverNode = nodeId; hoverEdge = edgeId; hoverStarted = performance.now();
-  cv.style.cursor = node || edge ? 'pointer' : (tool === 'move' ? 'grab' : 'crosshair');
+  updateCanvasCursor();
   draw();
   if((node || edge) && !hoverFrame) hoverFrame = requestAnimationFrame(animateHover);
 }
@@ -363,8 +376,21 @@ function renderScene(c, w, h, v){
   c.save(); c.translate(v.x, v.y); c.scale(v.s, v.s);
   const st = currentStep(), showW = algo !== 'color';
   for(const e of G.edges) drawEdge(c, e, st, showW);
+  if(tool === 'edge' && selNode != null && edgePreview) drawEdgePreview(c, selNode, edgePreview);
   for(const n of G.nodes) drawNode(c, n, st);
   c.restore();
+}
+function drawEdgePreview(c, sourceId, target){
+  const source = nodeById(sourceId); if(!source) return;
+  const dx = target.x-source.x, dy = target.y-source.y, length = Math.hypot(dx,dy);
+  if(length < 1) return;
+  const ux = dx/length, uy = dy/length, endNode = hitNode(target);
+  const start = {x:source.x+ux*NR, y:source.y+uy*NR};
+  const endDistance = endNode && endNode.id !== sourceId ? Math.max(NR, length-NR) : length;
+  const end = {x:source.x+ux*endDistance, y:source.y+uy*endDistance};
+  c.save(); c.beginPath(); c.moveTo(start.x,start.y); c.lineTo(end.x,end.y);
+  c.setLineDash([8,6]); c.lineWidth=4; c.strokeStyle='#ffcd75'; c.lineCap='round';
+  c.shadowColor=INK; c.shadowBlur=2; c.stroke(); c.restore();
 }
 function pill(c, x, y, text, bg, fg, border){
   c.font = `bold 13px ${FONT}`;
@@ -483,6 +509,7 @@ cv.addEventListener('pointermove', e => {
   if(!pointers.has(e.pointerId)){
     if(e.pointerType !== 'touch'){
       const p = ptr(e), w = toWorld(p.x, p.y), n = hitNode(w), ed = n ? null : hitEdge(w);
+      if(tool === 'edge' && selNode != null){ edgePreview = w; draw(); }
       setHover(n, ed);
     }
     return;
@@ -519,7 +546,13 @@ function endPtr(e){
 }
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', endPtr);
-cv.addEventListener('pointerleave', () => { if(!pointers.size) setHover(null, null); });
+cv.addEventListener('pointerleave', () => {
+  if(!pointers.size){
+    edgePreview = null;
+    setHover(null, null);
+    draw();
+  }
+});
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('wheel', e => { e.preventDefault(); const p = ptr(e); zoomAt(p.x, p.y, Math.exp(-e.deltaY*0.0015)); }, {passive:false});
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -541,6 +574,7 @@ function handleTap(d){
       if(selNode == null || !nodeById(selNode)){ selNode = n.id; }
       else if(selNode === n.id){ selNode = null; }
       else { const u = selNode; selNode = null; addEdge(u, n.id); }
+      edgePreview = {x:w.x,y:w.y};
       updateHint(); draw();
       break;
     case 'edit': if(n) renameNode(n); else if(ed) editWeight(ed); break;
@@ -900,9 +934,9 @@ function init(){
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(b) setTab(b.dataset.tab); });
   $('#toolbar').addEventListener('click', e => {
     const b = e.target.closest('[data-tool]'); if(!b) return;
-    tool = b.dataset.tool; selNode = null;
+    tool = b.dataset.tool; selNode = null; edgePreview = null;
     $$('[data-tool]').forEach(x => x.classList.toggle('on', x === b));
-    updateHint(); draw();
+    updateCanvasCursor(); updateHint(); draw();
   });
   $('#aDir').onclick = () => { commit(() => { G.directed = !G.directed; }); toast(G.directed ? '→ เปลี่ยนเป็นกราฟมีทิศทาง' : '— เปลี่ยนเป็นกราฟไม่มีทิศทาง'); };
   $('#aUndo').onclick = undo;
