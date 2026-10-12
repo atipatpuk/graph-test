@@ -198,6 +198,8 @@ def _dijkstra(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _prim(payload: dict[str, Any]) -> dict[str, Any]:
     nodes, edges, names, directed = _graph(payload)
+    if directed:
+        raise ValueError("Prim ใช้ได้เฉพาะกราฟไม่มีทิศทาง")
     ids = [node["id"] for node in nodes]
     if not ids:
         raise ValueError("ยังไม่มีจุดยอด")
@@ -223,8 +225,6 @@ def _prim(payload: dict[str, Any]) -> dict[str, Any]:
             current["edge"].update(edge)
         steps.append(_step(message, **current))
 
-    if directed:
-        snap("ℹ Prim ใช้กับกราฟไม่มีทิศทาง → ระบบจะมองทุกเส้นเป็นแบบไม่มีทิศ")
     order = [start, *(node_id for node_id in ids if node_id != start)]
     for root in order:
         if root in in_tree:
@@ -254,7 +254,7 @@ def _prim(payload: dict[str, Any]) -> dict[str, Any]:
     snap(f"✔ เสร็จสิ้น! Minimum Spanning Tree มี {len(selected)} เส้น น้ำหนักรวม = {_fmt(total)}" if tree_count == 1 else f"✔ เสร็จสิ้น! ได้ Spanning Forest {tree_count} ต้น ({len(selected)} เส้น) น้ำหนักรวม = {_fmt(total)}")
     label = "Minimum Spanning Tree" if tree_count == 1 else f"Spanning Forest ({tree_count} ต้น)"
     summary = f'<div class="hero {"warn" if tree_count > 1 else ""}">🌳 {label} น้ำหนักรวมต่ำสุด = <span class="bignum">{_fmt(total)}</span></div>'
-    summary += '<div class="cards">' + _card("จุดเริ่ม", _html(_name(names, start))) + _card("จำนวนเส้นที่ใช้", f"{len(selected)} (= |V| − {tree_count})") + _card("จำนวนต้นไม้", tree_count) + _card("เส้นที่ไม่ใช้", len(edges) - len(selected)) + "</div>"
+    summary += '<div class="cards">' + _card("จุดเริ่ม", _html(_name(names, start))) + _card("จำนวนเส้นที่ใช้", f"{len(selected)} = |V| − {tree_count}") + _card("จำนวนต้นไม้", tree_count) + _card("เส้นที่ไม่ใช้", len(edges) - len(selected)) + "</div>"
     if tree_count > 1:
         roots_html = " ".join(f'<span class="chip">{_html(_name(names, root))}</span>' for root in roots)
         summary += f"<p>⚠ กราฟไม่ Connected จึงได้ป่า (Forest) — เริ่มแต่ละต้นที่: {roots_html}</p>"
@@ -266,7 +266,9 @@ def _prim(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _coloring(payload: dict[str, Any]) -> dict[str, Any]:
-    nodes, edges, names, _ = _graph(payload)
+    nodes, edges, names, directed = _graph(payload)
+    if directed:
+        raise ValueError("Coloring ใช้ได้เฉพาะกราฟไม่มีทิศทาง")
     ids = [node["id"] for node in nodes]
     if not ids:
         raise ValueError("ยังไม่มีจุดยอด")
