@@ -352,6 +352,8 @@ def _coloring(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _flow(payload: dict[str, Any]) -> dict[str, Any]:
     nodes, edges, names, directed = _graph(payload)
+    if not directed:
+        raise ValueError("Max Flow ใช้ได้เฉพาะกราฟมีทิศทาง")
     ids = [node["id"] for node in nodes]
     source, sink = payload.get("source"), payload.get("sink")
     if source not in names or sink not in names:
@@ -408,7 +410,7 @@ def _flow(payload: dict[str, Any]) -> dict[str, Any]:
             current["edge"].update(edge)
         steps.append(_step(message, **current))
 
-    snap(f"เริ่มต้น: Flow ทุกเส้น = 0 (แสดงเป็น flow/capacity) | Source = {_name(names, source)}, Sink = {_name(names, sink)}" + ("" if directed else " | ⚠ กราฟไม่มีทิศ: แต่ละเส้นไหลได้ 2 ทาง"), {source: "current", sink: "current"})
+    snap(f"เริ่มต้น: Flow ทุกเส้น = 0 (แสดงเป็น flow/capacity) | Source = {_name(names, source)}, Sink = {_name(names, sink)}", {source: "current", sink: "current"})
     for iteration in range(1, 10001):
         parent: dict[int, tuple[int, dict[str, Any]] | None] = {source: None}
         queue = deque([source])
