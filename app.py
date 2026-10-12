@@ -45,8 +45,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--navy);font-famil
 header{position:relative;isolation:isolate;padding-top:46px;background:var(--ink);border-bottom:4px solid #000;flex:0 0 auto}
 header::before{content:"";position:absolute;z-index:-1;inset:0;height:46px;background:url('head.png') center center/cover no-repeat;image-rendering:pixelated;pointer-events:none}
 .titlebar{position:absolute;inset:0 0 auto;z-index:1;height:46px;display:flex;align-items:center;gap:10px;padding:4px 12px}
-.logo{color:var(--yellow);background:#684126;border:3px solid #241b20;padding:2px 8px;font-family:'Pixelify Sans','Mitr',sans-serif;font-weight:700;font-size:19px;letter-spacing:1px;text-shadow:2px 2px 0 var(--red);white-space:nowrap;box-shadow:3px 3px 0 #000}
-.sub{color:#fff;font-size:12px;text-shadow:1px 2px #1a1c2c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.logo{position:relative;display:inline-flex;align-items:center;color:#ffb52e;background:linear-gradient(180deg,#9b5b27 0 20%,#633518 20% 100%);border:3px solid #241b20;border-radius:6px;padding:1px 9px 1px 32px;font-family:'Pixelify Sans','Mitr',sans-serif;font-weight:700;font-size:19px;letter-spacing:1px;text-shadow:2px 2px 0 var(--red),-1px -1px 0 #ffd783;white-space:nowrap;box-shadow:0 0 0 2px #8e5a27,3px 4px 0 #000,inset 0 2px 0 #ffd783}
+.logo::before{content:"";position:absolute;inset:-4px;border:1px solid #63c74d;border-radius:8px;pointer-events:none}
+.logo-cat{position:absolute;left:-6px;top:-9px;width:30px;height:30px;display:grid;place-items:center;font:20px/1 'Mitr','Tahoma',sans-serif;filter:drop-shadow(2px 2px 0 #000);z-index:2}
+.sub{color:#241b20;background:#ffcd75;border:2px solid #281b1b;border-radius:3px;padding:0 6px;font-size:12px;font-weight:500;box-shadow:2px 3px 0 #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scroll{position:relative;z-index:1;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:8px 10px 11px;background:#604025;border-top:3px solid #b17836}
 .scroll::-webkit-scrollbar{display:none}
 .sep{flex:0 0 3px;background:#566c86;margin:4px 2px}
@@ -81,7 +83,8 @@ main{flex:1;display:flex;flex-direction:column;min-height:0}
   .scroll{padding:4px 10px 6px}
   .tbtn{min-height:36px;font-size:11px}
   .tbtn .ic{font-size:16px}
-  .logo{font-size:15px;letter-spacing:.5px;padding:0 5px;border-width:2px;box-shadow:2px 2px 0 #000}
+  .logo{font-size:15px;letter-spacing:.5px;padding:1px 7px 1px 27px;border-width:2px;box-shadow:0 0 0 2px #8e5a27,2px 3px 0 #000,inset 0 2px 0 #ffd783}
+  .logo-cat{left:-5px;top:-7px;width:25px;height:25px;font-size:17px}
   .sub{font-size:10px}
 }
 .dockhead{display:flex;align-items:flex-start;gap:6px;padding-top:6px}
@@ -149,7 +152,7 @@ ol.steps li{margin-bottom:6px}
 <body>
 <div id="app">
   <header>
-    <div class="titlebar"><span class="logo">&#9638; GRAPH LAB</span><span class="sub">Logistics &amp; Urban Planning</span></div>
+    <div class="titlebar"><span class="logo"><span class="logo-cat" aria-hidden="true">🐱</span>GRAPH LAB</span><span class="sub">Logistics &amp; Urban Planning</span></div>
     <div class="scroll" id="toolbar">
       <button type="button" class="btn tbtn on" data-tool="move"><span class="ic">✋</span>ย้าย/เลื่อน</button>
       <button type="button" class="btn tbtn" data-tool="node"><span class="ic">⬛</span>เพิ่มจุด</button>
