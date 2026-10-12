@@ -61,6 +61,9 @@ header::before{content:"";position:absolute;z-index:-1;inset:0;height:46px;backg
 .btn.mini{min-height:34px;font-size:13px;padding:2px 8px}
 .tbtn{flex-direction:column;gap:0;font-size:12px;min-width:66px;padding:3px 8px;line-height:1.2}
 .tbtn .ic{font-size:20px;line-height:1.15}
+@media (min-width:1400px){
+  #toolbar::after{content:"";align-self:center;flex:0 0 62px;height:58px;margin-left:auto;background:url('mascot_clean.png') center/contain no-repeat;filter:drop-shadow(2px 2px 0 #241b20);pointer-events:none}
+}
 #hint{background:var(--yellow);border-bottom:3px solid var(--ink);padding:6px 12px;font-size:14px;line-height:1.35;flex:0 0 auto}
 main{flex:1;display:flex;flex-direction:column;min-height:0}
 #stage{flex:1;position:relative;min-height:150px;overflow:hidden;background:var(--paper);border:5px solid #6b4727;box-shadow:inset 0 0 0 2px #d3a45c}
@@ -945,15 +948,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(204)
             self.end_headers()
             return
-        if self.path == "/head.png":
-            asset = Path(__file__).with_name("head.png")
+        assets = {
+            "/head.png": ("head.png", "image/png"),
+            "/mascot_clean.png": ("mascot_clean.png", "image/png"),
+        }
+        if self.path in assets:
+            filename, content_type = assets[self.path]
+            asset = Path(__file__).with_name(filename)
             try:
                 body = asset.read_bytes()
             except OSError:
                 self.send_error(404)
                 return
             self.send_response(200)
-            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "public, max-age=3600")
             self.end_headers()
